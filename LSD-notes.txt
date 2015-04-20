@@ -1,0 +1,108 @@
+# First connect to Soroban
+ssh ptf
+ssh soroban
+
+# Path to custom LSD tables
+echo $LSD_TEMPDIR
+
+# First create the empty table
+lsd-admin --db $LSD_TEMPDIR create table \
+--drop-existing --primary-key=pk --spatial-keys=ra,dec \
+targets \
+pk:u8 target_id:u8 ra:f8 dec:f8 period:f4 redshift:f4
+
+# Now we import the data to the table
+lsd-import --db=$LSD_TEMPDIR text -d ',' --skip-header=1 \
+--cols target_id:1,ra:2,dec:3,period:4,redshift:5 targets periodlist.dat
+
+# Info about the table
+lsd-admin --db $LSD_TEMPDIR desc table targets
+
+# To drop the table
+lsd-admin --db $LSD_TEMPDIR drop table targets
+
+# Cross-match with the main database
+lsd-query \
+--define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
+--define "sys_err=FileTable('/smallfiles/bsesar/DB/sys_err.npz', missing='90.0')" \
+--define "best=FileTable('/smallfiles/bsesar/DB/current_pids.npz')" \
+'SELECT t.target_id, d.ra as ra, d.dec as dec, d.mjd, \
+(d.mag_auto+d.zeropoint)/1000.-zp(pid) as mag, \
+sqrt((d.magerr_auto/1000.)**2+(sys_err(pid))**2) as magErr, \
+d.flags, d.imaflags_iso, e.ptf_field, e.ccdid, \
+m._NR, m._DIST*3600 \
+FROM targets as t, ptf_exp as e, ptf_det as d, ptf_obj(matchedto=t, nmax=1, dmax=1.5, outer=True) as m \
+WHERE ((d.flags & 506) == 0) & (e.fid == 2) & \
+((d.imaflags_iso & 1821) == 0) & ((d.infobits & 2**17) == 0) & \
+(mag > 10) & (mag < 23) & (magErr < 1) & (best(pid) == 1)' > output.dat
+
+# Or for a single beam
+lsd-query --bounds='beam(345.84915,-0.418251,1.5/3600.)' \
+--define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
+--define "sys_err=FileTable('/smallfiles/bsesar/DB/sys_err.npz', missing='90.0')" \
+--define "best=FileTable('/smallfiles/bsesar/DB/current_pids.npz')" \
+'SELECT d.ra as ra, d.dec as dec, d.mjd, \
+(d.mag_auto+d.zeropoint)/1000.-zp(pid) as mag, \
+sqrt((d.magerr_auto/1000.)**2+(sys_err(pid))**2) as magErr, \
+d.flags, d.imaflags_iso, e.ptf_field, e.ccdid, o.obj_id \
+FROM ptf_exp as e, ptf_det as d, ptf_obj as o \
+WHERE ((d.flags & 506) == 0) & (e.fid == 2) & \
+((d.imaflags_iso & 1821 ) == 0) & ((d.infobits & 2**17) == 0) & \
+(mag > 10) & (mag < 23) & (magErr < 1) & (best(pid) == 1)' > output.dat
+
+# here are the queries i've tried
+lsd-query \
+--define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
+--define "sys_err=FileTable('/smallfiles/bsesar/DB/sys_err.npz', missing='90.0')" \
+--define "best=FileTable('/smallfiles/bsesar/DB/current_pids.npz')" \
+--bounds='rectangle(310, 40, 320, 50)' \
+'SELECT t.target_id, d.ra as ra, d.dec as dec, d.mjd, \
+(d.mag_auto+d.zeropoint)/1000.-zp(pid) as mag, \
+sqrt((d.magerr_auto/1000.)**2+(sys_err(pid))**2) as magErr, \
+d.flags, d.imaflags_iso, e.ptf_field, e.ccdid, \
+m._NR, m._DIST*3600 \
+FROM targets as t, ptf_exp as e, ptf_det as d, \
+     ptf_obj(matchedto=t, nmax=1, dmax=1.5, outer=True) as m \
+WHERE ((d.flags & 506) == 0) & (e.fid == 2) & \
+((d.imaflags_iso & 1821) == 0) & ((d.infobits & 2**17) == 0) & \
+(mag > 10) & (mag < 23) & (magErr < 1) & (best(pid) == 1)' > output.dat
+
+lsd-query \
+--define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
+--define "sys_err=FileTable('/smallfiles/bsesar/DB/sys_err.npz', missing='90.0')" \
+--define "best=FileTable('/smallfiles/bsesar/DB/current_pids.npz')" \
+--bounds='rectangle(314.5, 44, 315, 44.5)' \
+'SELECT t.target_id, d.ra as ra, d.dec as dec, d.mjd, \
+(d.mag_auto+d.zeropoint)/1000.-zp(pid) as mag, \
+sqrt((d.magerr_auto/1000.)**2+(sys_err(pid))**2) as magErr, \
+d.flags, d.imaflags_iso, e.ptf_field, e.ccdid, \
+m._NR, m._DIST*3600 \
+FROM targets as t, ptf_exp as e, ptf_det as d, \
+     ptf_obj(matchedto=t, nmax=1, dmax=10., outer=True) as m' > output.dat
+
+lsd-query \
+--define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
+--define "sys_err=FileTable('/smallfiles/bsesar/DB/sys_err.npz', missing='90.0')" \
+--define "best=FileTable('/smallfiles/bsesar/DB/current_pids.npz')" \
+--bounds='rectangle(314.5, 44, 315, 44.5)' \
+'SELECT t.target_id, t.ra, t.dec, d.ra as ra, d.dec as dec, d.mjd, \
+m._NR, m._DIST*3600 \
+FROM targets as t, ptf_exp as e, ptf_det as d, \
+     ptf_obj(matchedto=t, nmax=1, dmax=10., xmatch=True) as m' > output.dat
+
+# Here's the final query -- since they are Stripe 82 targets, I do a rectangle selection around +/1 1.5 degrees in declination
+lsd-query \
+--define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
+--define "sys_err=FileTable('/smallfiles/bsesar/DB/sys_err.npz', missing='90.0')" \
+--define "best=FileTable('/smallfiles/bsesar/DB/current_pids.npz')" \
+--bounds='rectangle(0, -1.5, 360, 1.5)' \
+'SELECT t.target_id, d.ra as ra, d.dec as dec, d.mjd, \
+(d.mag_auto+d.zeropoint)/1000.-zp(pid) as mag, \
+sqrt((d.magerr_auto/1000.)**2+(sys_err(pid))**2) as magErr, \
+d.flags, d.imaflags_iso, e.ptf_field, e.ccdid, \
+m._NR, m._DIST*3600 \
+FROM targets as t, ptf_exp as e, ptf_det as d, \
+     ptf_obj(matchedto=t, nmax=1, dmax=1.5, outer=True) as m \
+WHERE ((d.flags & 506) == 0) & (e.fid == 2) & \
+((d.imaflags_iso & 1821) == 0) & ((d.infobits & 2**17) == 0) & \
+(mag > 10) & (mag < 23) & (magErr < 1) & (best(pid) == 1)' > output.dat
