@@ -9,7 +9,7 @@ lsd-admin --db $LSD_TEMPDIR create table \
 pk:u8 target_id:u8 ra:f8 dec:f8
 
 lsd-import --db=$LSD_TEMPDIR text -d ' ' \
---cols target_id:1,ra:2,dec:3 {name} {filename}
+--cols target_id:1,ra:2,dec:3 {name} data/Spring2015/{filename}
 
 lsd-query \
 --define "zp=FileTable('/smallfiles/bsesar/DB/zps.npz', missing='90.0')" \
@@ -26,6 +26,9 @@ WHERE ((d.flags & 506) == 0) & (e.fid == 2) & \
 ((d.imaflags_iso & 1821) == 0) & ((d.infobits & 2**17) == 0) & \
 (mag > 10) & (mag < 23) & (magErr < 1) & (best(pid) == 1)' > /scr/aprice-whelan/{name}-output.dat
 """
+
+if not os.path.exists("Spring2015-queries"):
+    os.mkdir("Spring2015-queries")
 
 for filename in os.listdir("data/Spring2015"):
     name = filename.split(".txt")[0].lower()
